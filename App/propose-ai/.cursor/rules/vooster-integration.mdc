@@ -1,0 +1,101 @@
+# Vooster Project Integration Guidelines
+
+## 📋 참조 문서 위치
+
+- **PRD (제품 요구사항)**: `/vooster-docs/prd.md`
+- **Architecture (기술 아키텍처)**: `/vooster-docs/architecture.md`
+- **Guideline (코드 가이드라인)**: `/vooster-docs/guideline.md`
+
+## 🎯 프로젝트 핵심 목표
+
+IT 마케터가 고객사 분석부터 제안서 초안 작성까지 30분 내 자동화하는 SaaS 웹 서비스
+
+## 🏗️ 기술 스택 (Architecture 문서 기준)
+
+- **Frontend**: Next.js 15.1.0 (App Router), React 19, TypeScript, Tailwind CSS, shadcn-ui, Turbopack
+- **Backend**: Supabase (PostgreSQL, Auth, Edge Functions), Hono 미들웨어, Vercel Edge Functions
+- **AI**: OpenAI GPT-4, embeddings, RAG
+- **상태관리**: Zustand (전역), @tanstack/react-query (서버 상태)
+- **캐시**: Redis@Upstash (RAG 임베딩, 세션, AI 응답 캐싱)
+
+## 📂 디렉토리 구조 (Architecture 문서 기준)
+
+```
+/project-root
+├── frontend/
+│   ├── src/
+│   │   ├── app/               # Next.js App Router
+│   │   ├── domains/           # DDD 단위 (auth, proposal, workspace, payment)
+│   │   ├── components/        # UI atomic components
+│   │   ├── hooks/             # Custom React hooks
+│   │   ├── services/          # API client
+│   │   ├── stores/            # Zustand stores
+│   │   └── utils/             # Client helpers
+│   └── package.json
+├── backend/
+│   ├── functions/
+│   │   ├── auth/              # 인증 관련 Edge Functions
+│   │   ├── ai/                # AI 관련 Edge Functions
+│   │   ├── proposal/          # 제안서 관련 Edge Functions
+│   │   ├── payment/           # 결제 관련 Edge Functions
+│   │   └── utils/             # 공통 유틸리티
+│   └── supabase.toml
+├── database/
+│   ├── migrations/            # Supabase 마이그레이션
+│   ├── seeds/                 # 초기 데이터
+│   └── schema.sql
+└── infrastructure/
+    ├── github-actions/        # CI/CD
+    ├── scripts/               # 배포 스크립트
+    └── monitoring/            # 모니터링 설정
+```
+
+## 🚀 핵심 기능 (PRD 기준)
+
+0. **사용자 온보딩 설문** - 마케터 업무 유형, 제안서 목적, 선호 문체 등 맞춤형 프로파일 수집
+1. **AI 고객사 분석** - URL/기업명 입력으로 리포트 생성
+2. **AI 포지셔닝 & 전략 추천** - 차별화 포지셔닝, 캠페인 제안
+3. **제안서 초안 생성** - 목차, Executive Summary, 타임라인, 예산안
+4. **인터랙티브 편집** - AI 채팅으로 섹션별 수정
+5. **버전·협업 관리** - 저장, 이력 추적, 팀 공유
+
+## 💡 개발 시 반드시 고려사항
+
+- 평균 작성 시간 ≤ 30분 목표
+- AI 리포트 평균 응답 ≤ 3초, 초안 렌더링 ≤ 5분
+- OAuth2, RBAC, AES-256 암호화 보안
+- 동시 접속 10,000명까지 성능 저하 없이 확장
+- 99.9% 가용성, 장애 복구 RTO 30분 / RPO 5분
+- 사용자 온보딩 설문 2분 내 완료율 80% 이상
+
+## 📋 코드 품질 기준 (Guideline 문서 기준)
+
+- **도메인 중심 모듈화**: 비즈니스 도메인별 코드 구성, 단일 책임 원칙 준수
+- **타입 안전성**: TypeScript strict mode, 모든 함수 매개변수/반환값 명시적 타입 지정
+- **명시적 에러 처리**: 모든 async 호출 try/catch 처리, Sentry 로깅 통합
+- **검증 & 보안**: Zod 스키마 validation, 사용자 입력 클라이언트/서버 양쪽 검증
+- **성능 우선**: 데이터 접근 및 API 호출 최적화, 캐싱 및 배치 처리 활용
+- **React 함수형 컴포넌트**: 클래스 컴포넌트 금지, hooks 생태계 활용
+- **Tailwind 유틸리티 우선**: 모든 스타일링에 Tailwind CSS 클래스 사용
+- **절대 경로 import**: tsconfig paths 활용, 깊은 상대 경로 금지
+- **ESLint, Prettier 통과 필수**
+
+## 🎨 UI/UX 가이드라인
+
+- **shadcn-ui 컴포넌트 활용**: 접근성 내장, 일관된 디자인
+- **Tailwind CSS 유틸리티 우선**: 모든 스타일링, 디자인 토큰 활용
+- **Framer Motion 애니메이션**: 부드러운 전환 효과
+- **Lucide React 아이콘**: 경량화된 아이콘 시스템
+- **next-themes**: 다크/라이트 테마 지원
+- **반응형 디자인 필수**: 모바일 우선 설계
+- **사용자 온보딩 UX**: 2분 내 완료 가능한 직관적 인터페이스
+
+## 🔄 개발 워크플로우
+
+1. **Vooster 태스크 확인**: 우선순위 태스크 분석 및 수용 기준 검토
+2. **PRD 요구사항 검토**: 비즈니스 목표 및 성공 지표 확인
+3. **Architecture 가이드라인 준수**: 도메인 중심 구조, 서버리스 아키텍처 적용
+4. **Guideline 코드 표준 적용**: 타입 안전성, 에러 처리, 성능 최적화
+5. **테스트 및 품질 검증**: ESLint/Prettier, 보안 검증, 성능 측정
+6. **Redis 캐싱 전략**: AI 응답 및 RAG 검색 결과 캐싱 적용
+7. **Sentry 로깅**: 모든 에러 및 성능 지표 추적
