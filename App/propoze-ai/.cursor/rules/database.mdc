@@ -1,0 +1,263 @@
+---
+alwaysApply: true
+---
+
+### A Minimal Viable Product (MVP) Data Flow and Schema
+
+## 1. Data Flow (MVP)
+
+```mermaid
+graph TD
+    A[User Login / Sign-up] --> B[Create Project]
+    B --> C[Input Client-Company Info]
+    C --> D[LLM Prompt<br>(OpenAI or Anthropic)]
+    D --> E[Store AI Analysis Report]
+    E --> F[Generate Proposal Draft]
+    F --> G[Save Proposal Version 1]
+    G --> H[User Edits → Version 2,3…]
+    H --> I[Export to PDF]
+    I --> J[Create Read-only Share Link]
+```
+
+| 단계    | 주요 처리                          | 비고                              |
+| ------- | ---------------------------------- | --------------------------------- |
+| **A**   | JWT 세션 발급                      | 이메일/패스워드 또는 Google OAuth |
+| **B–C** | 프로젝트/고객사 레코드 생성        | 둘 다 `user_id` 종속              |
+| **D**   | 프롬프트에 고객사 정보 포함        | 외부 기업 API 호출 없음           |
+| **E**   | LLM 결과 JSON 저장                 | `ai_analysis_reports`             |
+| **F–G** | 템플릿 채워 초안 생성, 버전 1 저장 | `proposals`, `proposal_versions`  |
+| **H**   | 사용자 편집 시 버전 넘버 +1        |                                   |
+| **I–J** | 서버-측 PDF 렌더 & 토큰 링크 발급  | `proposal_share_links`            |
+
+---
+
+## 2. Minimal Database Schema (English SQL)
+
+```sql
+-- 1. Users -------------------------------------------------
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    name  VARCHAR(255),
+    password_hash TEXT,
+    provider      VARCHAR(20),   -- 'google' OR NULL
+    provider_id   VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    CHECK (
+      (provider IS NULL  AND password_hash IS NOT NULL) OR
+      (provider IS NOT NULL AND provider_id     IS NOT NULL)
+    )
+);
+CREATE INDEX idx_users_email ON users(email);
+
+-- 2. Client Companies -------------------------------------
+CREATE TABLE client_companies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id  UUID REFERENCES users(id) ON DELETE CASCADE,
+    name     VARCHAR(255) NOT NULL,
+    domain   VARCHAR(255),
+    industry VARCHAR(100),
+    summary  TEXT,                        -- entered manually
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX idx_companies_user ON client_companies(user_id);
+
+-- 3. Projects ---------------------------------------------
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    client_company_id UUID REFERENCES client_companies(id),
+    name        VARCHAR(255) NOT NULL,
+    description TEXT,
+    status      VARCHAR(20) DEFAULT 'draft',   -- 'draft','in_progress','completed'
+    due_date    DATE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX idx_projects_user ON projects(user_id);
+
+-- 4. AI Analysis Reports ----------------------------------
+CREATE TABLE ai_analysis_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    analysis_json JSONB NOT NULL,      -- LLM output
+    model  VARCHAR(50) NOT NULL,       -- 'gpt-4o','claude-3',…
+    prompt_tokens     INT,
+    completion_tokens INT,
+    cost NUMERIC(10,4),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 5. Proposals & Versions ---------------------------------
+CREATE TABLE proposals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    current_version INT DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE proposal_versions (
+    proposal_id    UUID REFERENCES proposals(id) ON DELETE CASCADE,
+    version_number INT,
+    content_json   JSONB NOT NULL,
+    change_summary TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (proposal_id, version_number)
+);
+
+-- 6. Read-only Share Links --------------------------------
+CREATE TABLE proposal_share_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proposal_id UUID REFERENCES proposals(id) ON DELETE CASCADE,
+    share_token VARCHAR(255) UNIQUE NOT NULL,
+    expires_at  TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- 7. updated_at auto-refresh -------------------------------
+CREATE OR REPLACE FUNCTION touch_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER touch_users     BEFORE UPDATE ON users             FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_companies BEFORE UPDATE ON client_companies  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_projects  BEFORE UPDATE ON projects          FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_proposals BEFORE UPDATE ON proposals         FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+```
+
+### A Minimal Viable Product (MVP) Data Flow and Schema
+
+## 1. Data Flow (MVP)
+
+```mermaid
+graph TD
+    A[User Login / Sign-up] --> B[Create Project]
+    B --> C[Input Client-Company Info]
+    C --> D[LLM Prompt<br>(OpenAI or Anthropic)]
+    D --> E[Store AI Analysis Report]
+    E --> F[Generate Proposal Draft]
+    F --> G[Save Proposal Version 1]
+    G --> H[User Edits → Version 2,3…]
+    H --> I[Export to PDF]
+    I --> J[Create Read-only Share Link]
+```
+
+| 단계    | 주요 처리                          | 비고                              |
+| ------- | ---------------------------------- | --------------------------------- |
+| **A**   | JWT 세션 발급                      | 이메일/패스워드 또는 Google OAuth |
+| **B–C** | 프로젝트/고객사 레코드 생성        | 둘 다 `user_id` 종속              |
+| **D**   | 프롬프트에 고객사 정보 포함        | 외부 기업 API 호출 없음           |
+| **E**   | LLM 결과 JSON 저장                 | `ai_analysis_reports`             |
+| **F–G** | 템플릿 채워 초안 생성, 버전 1 저장 | `proposals`, `proposal_versions`  |
+| **H**   | 사용자 편집 시 버전 넘버 +1        |                                   |
+| **I–J** | 서버-측 PDF 렌더 & 토큰 링크 발급  | `proposal_share_links`            |
+
+---
+
+## 2. Minimal Database Schema (English SQL)
+
+```sql
+-- 1. Users -------------------------------------------------
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    name  VARCHAR(255),
+    password_hash TEXT,
+    provider      VARCHAR(20),   -- 'google' OR NULL
+    provider_id   VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    CHECK (
+      (provider IS NULL  AND password_hash IS NOT NULL) OR
+      (provider IS NOT NULL AND provider_id     IS NOT NULL)
+    )
+);
+CREATE INDEX idx_users_email ON users(email);
+
+-- 2. Client Companies -------------------------------------
+CREATE TABLE client_companies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id  UUID REFERENCES users(id) ON DELETE CASCADE,
+    name     VARCHAR(255) NOT NULL,
+    domain   VARCHAR(255),
+    industry VARCHAR(100),
+    summary  TEXT,                        -- entered manually
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX idx_companies_user ON client_companies(user_id);
+
+-- 3. Projects ---------------------------------------------
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    client_company_id UUID REFERENCES client_companies(id),
+    name        VARCHAR(255) NOT NULL,
+    description TEXT,
+    status      VARCHAR(20) DEFAULT 'draft',   -- 'draft','in_progress','completed'
+    due_date    DATE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX idx_projects_user ON projects(user_id);
+
+-- 4. AI Analysis Reports ----------------------------------
+CREATE TABLE ai_analysis_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    analysis_json JSONB NOT NULL,      -- LLM output
+    model  VARCHAR(50) NOT NULL,       -- 'gpt-4o','claude-3',…
+    prompt_tokens     INT,
+    completion_tokens INT,
+    cost NUMERIC(10,4),
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 5. Proposals & Versions ---------------------------------
+CREATE TABLE proposals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    current_version INT DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE proposal_versions (
+    proposal_id    UUID REFERENCES proposals(id) ON DELETE CASCADE,
+    version_number INT,
+    content_json   JSONB NOT NULL,
+    change_summary TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (proposal_id, version_number)
+);
+
+-- 6. Read-only Share Links --------------------------------
+CREATE TABLE proposal_share_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proposal_id UUID REFERENCES proposals(id) ON DELETE CASCADE,
+    share_token VARCHAR(255) UNIQUE NOT NULL,
+    expires_at  TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ DEFAULT now()
+);
+
+-- 7. updated_at auto-refresh -------------------------------
+CREATE OR REPLACE FUNCTION touch_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER touch_users     BEFORE UPDATE ON users             FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_companies BEFORE UPDATE ON client_companies  FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_projects  BEFORE UPDATE ON projects          FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER touch_proposals BEFORE UPDATE ON proposals         FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+```
